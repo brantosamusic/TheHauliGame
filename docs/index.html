@@ -53,7 +53,7 @@
   #game1 canvas, #game2 canvas{display:block;width:100%;height:66vh;border-radius:16px;position:relative;z-index:1}
   @media (max-height:800px){ #game1 canvas, #game2 canvas{height:58vh} }
 
-  /* WICHTIG: Overlay lässt Klicks durch – nur die Card fängt Events */
+  /* Overlay lässt Klicks durch – nur die Card nimmt Events */
   .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:2}
   .overlay .card{pointer-events:auto}
 
@@ -326,7 +326,7 @@ function sfxHit(){ beep(140, .12, 'square', .05); }
 function sfxGate(){ beep(660, .09, 'triangle', .035); }
 
 /* ===========================================================
-   GAME 1: The Hauli Game
+   GAME 1: The Hauli Game (Dodge & Collect)
    =========================================================== */
 (function(){
   const canvas = document.getElementById('g1-c');
@@ -455,7 +455,7 @@ function sfxGate(){ beep(660, .09, 'triangle', .035); }
 
     if(settings.fx){
       ctx.save(); ctx.globalAlpha=.06; ctx.strokeStyle='#7ee7ff'; const step=24;
-      for(let x=0;x<Wc;x+=step){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,Hc); ctx.stroke(); }
+      for(let x=0;x<Wc;x+=step){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(Wc,y); ctx.stroke(); }
       for(let y=0;y<Hc;y+=step){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(Wc,y); ctx.stroke(); }
       ctx.restore();
     }
@@ -477,11 +477,11 @@ function sfxGate(){ beep(660, .09, 'triangle', .035); }
 })();
 
 /* ===========================================================
-   GAME 2: Hauli Jump — robust
+   GAME 2: Hauli Jump — ROBUST SPACE INPUT
    =========================================================== */
 (function(){
   const canvas = document.getElementById('g2-c');
-  const host = document.getElementById('g2-box');
+  const host   = document.getElementById('g2-box');
   let ctx = fitCanvas(canvas, host);
   window.addEventListener('resize', ()=>{ fitCanvas(canvas, host); });
 
@@ -500,14 +500,33 @@ function sfxGate(){ beep(660, .09, 'triangle', .035); }
   const gravity = 0.18, thrust = -0.38;
   let spawnT=0, orbT=1500;
 
-  const keys={}; window.addEventListener('keydown',e=>{
-    const k = e.key.toLowerCase();
-    keys[k]=true;
-    if(e.key===' '){ e.preventDefault(); flap(); }
-    if(k==='p') togglePause();
-  }, {passive:false});
-  window.addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=false; });
-  ['mousedown','touchstart'].forEach(ev=> host.addEventListener(ev, e=>{ e.preventDefault(); flap(); }, {passive:false}));
+  function isSpace(e){ return e.code === 'Space' || e.key === ' ' || e.key === 'Space' || e.key === 'Spacebar'; }
+
+  const keys = {};
+  ['keydown','keypress'].forEach(evt=>{
+    document.addEventListener(evt,(e)=>{
+      if(isSpace(e)){
+        e.preventDefault();
+        flap();               // startet oder flapped
+        return;
+      }
+      const k = (e.key||'').toLowerCase();
+      keys[k] = true;
+      if(k === 'p'){ e.preventDefault(); togglePause(); }
+    }, {capture:true});
+  });
+  document.addEventListener('keyup', (e)=>{
+    const k = (e.key||'').toLowerCase();
+    keys[k] = false;
+  }, {capture:true});
+
+  // Klick/Touch überall im Spielbereich
+  ['mousedown','touchstart'].forEach(ev=>{
+    host.addEventListener(ev, (e)=>{ e.preventDefault(); flap(); }, {passive:false});
+  });
+
+  // Fokussieren (falls Space sonst geskippt würde)
+  window.addEventListener('load', ()=> { try{ document.body.tabIndex = -1; document.body.focus(); }catch{} });
 
   el.info.onclick = ()=> el.how.style.display = el.how.style.display==='none'?'block':'none';
   el.play.onclick = start; el.retry.onclick = start; el.pause.onclick = togglePause;
@@ -616,7 +635,7 @@ function sfxGate(){ beep(660, .09, 'triangle', .035); }
 
   renderHighscores('hauli2-hs', el.hsbox);
 })();
-
+  
 /* ---------- Highscores (shared) ---------- */
 function saveHighscore(key, score, target){
   const name = prompt('Enter your initials (max 8):','YOU') || 'YOU';
@@ -637,7 +656,7 @@ function renderHighscores(key, target){
   </table></div>`;
 }
 
-/* ---------- ensure audio ctx ---------- */
+/* ---------- ensure audio ctx on tab click ---------- */
 document.querySelectorAll('.tab[data-show]').forEach(b=>b.addEventListener('click', ensureAC));
 </script>
 </body>
