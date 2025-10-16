@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Hauli Game</title>
+<meta name="description" content="A tiny one-thumb arcade to beat lecture boredom. Move, collect sparks, dodge blobs.">
+<style>
+  :root{
+    --bg:#0b0f19;
+    --panel:#101929;
+    --text:#eaf2ff;
+    --muted:#9eb0d1;
+    --accent:#ffa260;
+    --accent2:#7ee7ff;
+    --danger:#ff6b7d;
+    --ok:#74ffa7;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:
+      radial-gradient(1100px 700px at 20% -10%, #142447 0%, var(--bg) 60%),
+      linear-gradient(180deg, var(--bg), #0a1224);
+    color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .wrap{width: min(1100px, 100%); padding:16px}
+  header{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px}
+  h1{font-size:clamp(1.2rem, 4vw, 1.6rem); margin:0; letter-spacing:.5px}
+  .hud{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);
+    padding:8px 10px; border-radius:12px;
+  }
+  .pill{padding:6px 10px; border-radius:10px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08)}
+  #gameBox{
+    background:linear-gradient(180deg, #0d1428 0%, #0a0f1e 100%);
+    border:1px solid rgba(255,255,255,.08); border-radius:16px; position:relative;
+    box-shadow: 0 8px 28px rgba(0,0,0,.45);
+  }
+  canvas{display:block; width:100%; height:65vh; border-radius:16px}
+  @media (max-height:800px){ canvas{ height:58vh } }
+  .overlay{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    pointer-events:none;
+  }
+  .panel{
+    pointer-events:auto; background:var(--panel); border:1px solid rgba(255,255,255,.12);
+    border-radius:16px; padding:22px; max-width:min(560px, 92%); text-align:center;
+    box-shadow: 0 16px 40px rgba(0,0,0,.5);
+  }
+  .title{font-size:clamp(1.6rem, 6vw, 2.2rem); margin:.2em 0 .4em}
+  .muted{color:var(--muted)}
+  .row{display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:12px}
+  .btn{
+    background:var(--panel); color:var(--text);
+    border:1px solid rgba(255,255,255,.14); border-radius:12px; padding:12px 14px;
+    cursor:pointer; transition:transform .15s, filter .15s;
+  }
+  .btn.primary{background:linear-gradient(135deg, var(--accent), #ffc38f); color:#241308; border:none; font-weight:800}
+  .btn:hover{transform:translateY(-1px); filter:brightness(1.05)}
+  .kbd{font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background:#0c1529; border:1px solid rgba(255,255,255,.1); padding:3px 7px; border-radius:8px}
+  .touch{display:none}
+  @media (hover:none){ .touch{display:inline} }
+  .bar{
+    height:8px; border-radius:999px; background:rgba(255,255,255,.08); overflow:hidden;
+    border:1px solid rgba(255,255,255,.1)
+  }
+  .bar > i{display:block; height:100%; width:0%; background:linear-gradient(90deg, var(--accent2), var(--ok))}
+  footer{margin-top:10px; text-align:center; color:var(--muted); font-size:.9rem}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>🎮 The Hauli Game</h1>
+      <div class="hud">
+        <span class="pill">Score: <b id="score">0</b></span>
+        <span class="pill">Best: <b id="best">0</b></span>
+        <span class="pill">Lives: <b id="lives">❤️❤️❤️</b></span>
+        <span class="pill">Level: <b id="lvl">1</b></span>
+        <button id="pauseBtn" class="btn">⏸ Pause</button>
+      </div>
+    </header>
+
+    <div id="gameBox">
+      <canvas id="c"></canvas>
+
+      <!-- Start -->
+      <div id="startOv" class="overlay">
+        <div class="panel">
+          <div class="title">The Hauli Game</div>
+          <p class="muted">
+            Move <span class="kbd">←</span>/<span class="kbd">→</span> or <span class="kbd">A</span>/<span class="kbd">D</span>, dodge the <b style="color:var(--danger)">blobs</b>, collect
+            <b style="color:var(--accent)">sparks</b> for points and <b style="color:var(--ok)">coffee</b> for a boost. <span class="touch">Drag on the bottom to move.</span>
+          </p>
+          <div class="row">
+            <button id="startBtn" class="btn primary">Start</button>
+            <button id="howBtn" class="btn">How to play</button>
+          </div>
+          <div id="how" style="display:none; text-align:left; margin-top:14px">
+            <ul>
+              <li>Arrows / A D to move; hold <span class="kbd">Shift</span> to dash.</li>
+              <li>Touch: Drag on the lower half as a thumbstick.</li>
+              <li>3 lives. Each hit loses 1 life and short invulnerability.</li>
+              <li>Combo: collect sparks quickly for bonus points.</li>
+              <li>Level ups increase speed & spawn-rate.</li>
+              <li>Pause: <span class="kbd">P</span> or the Pause button.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Game Over -->
+      <div id="overOv" class="overlay" style="display:none">
+        <div class="panel">
+          <div class="title">Game Over</div>
+          <p class="muted">Score: <b id="finalScore">0</b> • Best: <b id="finalBest">0</b></p>
+          <div class="bar" aria-label="Level progress"><i id="lvlProg"></i></div>
+          <div class="row" style="margin-top:12px">
+            <button id="retryBtn" class="btn primary">Retry</button>
+            <button id="shareBtn" class="btn">Share</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      Tip: Open full-screen (F11) for max focus. Built to survive lectures 😇
+    </footer>
+  </div>
+
+<script>
+(() => {
+  // ====== Canvas setup with DPR scaling ======
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const box = document.getElementById('gameBox');
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  function resize() {
+    const rect = box.getBoundingClientRect();
+    canvas.width = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0); // draw in CSS pixels
+  }
+  resize(); addEventListener('resize', resize);
+
+  // ====== UI elements ======
+  const elScore = document.getElementById('score');
+  const elBest  = document.getElementById('best');
+  const elLives = document.getElementById('lives');
+  const elLvl   = document.getElementById('lvl');
+  const pauseBtn= document.getElementById('pauseBtn');
+  const startOv = document.getElementById('startOv');
+  const overOv  = document.getElementById('overOv');
+  const startBtn= document.getElementById('startBtn');
+  const howBtn  = document.getElementById('howBtn');
+  const howBox  = document.getElementById('how');
+  const retryBtn= document.getElementById('retryBtn');
+  const shareBtn= document.getElementById('shareBtn');
+  const finalScore = document.getElementById('finalScore');
+  const finalBest  = document.getElementById('finalBest');
+  const lvlProg    = document.getElementById('lvlProg');
+
+  // ====== Game state ======
+  const state = {
+    running:false, paused:false, t:0,
+    score:0, best: Number(localStorage.getItem('hauli-best')||0),
+    lives:3, level:1, comboTime:0, combo:0, invul:0,
+    w:() => canvas.clientWidth, h:() => canvas.clientHeight,
+  };
+  elBest.textContent = state.best;
+
+  // ====== Entities ======
+  const player = { x:0, y:0, r:16, vx:0, speed:6, dash:false };
+  const blobs   = []; // enemies
+  const sparks  = []; // points
+  const coffees = []; // boost
+  function resetEntities(){
+    blobs.length=0; sparks.length=0; coffees.length=0;
+  }
+
+  // ====== Helpers ======
+  function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
+  function dist(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return Math.hypot(dx,dy); }
+  function rand(a,b){ return Math.random()*(b-a)+a; }
+  function chance(p){ return Math.random()<p; }
+
+  // ====== Spawners ======
+  let spawnTimer=0, sparkTimer=0, coffeeTimer=0;
+  function spawnBlobs(dt){
+    spawnTimer -= dt;
+    if(spawnTimer<=0){
+      const speed = 1.4 + state.level*0.25 + rand(-0.2,0.2);
+      blobs.push({
+        x: rand(20, state.w()-20),
+        y: -30,
+        r: rand(10, 16 + state.level*1.5),
+        vy: speed + rand(0,0.6),
+        wiggle: rand(0, Math.PI*2),
+        color: 'rgba(255,107,125,0.9)',
+      });
+      const base = Math.max(400 - state.level*18, 120);
+      spawnTimer = base;
+    }
+  }
+  function spawnSparks(dt){
+    sparkTimer -= dt;
+    if(sparkTimer<=0){
+      sparks.push({
+        x: rand(20, state.w()-20),
+        y: -20, r: 8, vy: 1.2 + state.level*0.15,
+        color: '#ffa260'
+      });
+      sparkTimer = Math.max(480 - state.level*20, 160);
+    }
+  }
+  function spawnCoffee(dt){
+    coffeeTimer -= dt;
+    if(coffeeTimer<=0){
+      coffees.push({
+        x: rand(24, state.w()-24),
+        y: -24, r: 10, vy: 1 + state.level*0.12,
+        color: '#7ee7ff'
+      });
+      coffeeTimer = rand(7000, 11000); // ms
+    }
+  }
+
+  // ====== Input ======
+  const keys = {};
+  addEventListener('keydown', e=>{
+    keys[e.key.toLowerCase()]=true;
+    if(e.key==='p' || e.key==='P'){ togglePause(); }
+  });
+  addEventListener('keyup', e=>{ keys[e.key.toLowerCase()]=false; });
+
+  // Touch drag (bottom half)
+  let touchId=null, touchX=null;
+  canvas.addEventListener('touchstart', e=>{
+    for(const t of e.changedTouches){
+      const rect = canvas.getBoundingClientRect();
+      const y = t.clientY - rect.top;
+      if(y > rect.height*0.5){ touchId = t.identifier; touchX = t.clientX - rect.left; break; }
+    }
+  }, {passive:true});
+  canvas.addEventListener('touchmove', e=>{
+    for(const t of e.changedTouches){
+      if(t.identifier===touchId){
+        const rect = canvas.getBoundingClientRect();
+        touchX = t.clientX - rect.left;
+      }
+    }
+  }, {passive:true});
+  canvas.addEventListener('touchend', e=>{
+    for(const t of e.changedTouches){ if(t.identifier===touchId){ touchId=null; touchX=null; } }
+  });
+
+  // ====== Game control ======
+  function startGame(){
+    state.running = true; state.paused=false; state.t=0;
+    state.score=0; state.lives=3; state.level=1; state.combo=0; state.comboTime=0; state.invul=0;
+    resetEntities();
+    spawnTimer=0; sparkTimer=0; coffeeTimer=3500;
+    player.x = state.w()/2; player.y = state.h()-70; player.vx=0; player.speed=6; player.r=16; player.dash=false;
+    elLives.textContent = '❤️❤️❤️'; elLvl.textContent = state.level;
+    startOv.style.display='none'; overOv.style.display='none';
+  }
+  function gameOver(){
+    state.running=false;
+    finalScore.textContent = state.score;
+    state.best = Math.max(state.best, state.score);
+    localStorage.setItem('hauli-best', state.best);
+    elBest.textContent = state.best;
+    finalBest.textContent = state.best;
+    lvlProg.style.width = Math.min(100, (state.level/10)*100)+'%';
+    overOv.style.display='flex';
+  }
+  function togglePause(){
+    if(!state.running) return;
+    state.paused = !state.paused;
+    pauseBtn.textContent = state.paused ? '▶ Resume' : '⏸ Pause';
+  }
+
+  pauseBtn.onclick = togglePause;
+  startBtn.onclick = startGame;
+  retryBtn.onclick = startGame;
+  howBtn.onclick = () => { howBox.style.display = howBox.style.display==='none' ? 'block' : 'none'; };
+
+  shareBtn.onclick = async ()=>{
+    const text = `I scored ${state.best} in The Hauli Game!`;
+    const url = location.href;
+    if(navigator.share){
+      try{ await navigator.share({title:'The Hauli Game', text, url}); }catch{}
+    }else{
+      prompt('Copy your share text:', `${text} ${url}`);
+    }
+  };
+
+  // ====== Update & Draw ======
+  let last = performance.now();
+  function frame(now){
+    const dt = now - last; last = now;
+    if(state.running && !state.paused) tick(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  function tick(dt){
+    state.t += dt;
+    // difficulty scaling
+    const levelUp = 1000 + state.level*900; // every ~few seconds with score bonus
+    if(state.t > levelUp){
+      state.t = 0; state.level++;
+      elLvl.textContent = state.level;
+    }
+
+    // input
+    let dir = 0;
+    if(keys['arrowleft']||keys['a']) dir -= 1;
+    if(keys['arrowright']||keys['d']) dir += 1;
+    if (touchX!=null){
+      const center = state.w()/2;
+      dir = (touchX < center) ? -1 : 1;
+      // proportional move on touch
+      player.vx = (touchX - player.x) * 0.18;
+    }else{
+      const dash = keys['shift'];
+      const spd = (dash ? player.speed*1.6 : player.speed);
+      player.vx = dir * spd;
+    }
+    player.x = clamp(player.x + player.vx, 18, state.w()-18);
+
+    // spawn
+    spawnBlobs(dt); spawnSparks(dt); spawnCoffee(dt);
+
+    // move + cull
+    const H = state.h();
+    for(let i=blobs.length-1;i>=0;i--){
+      const b = blobs[i];
+      b.wiggle += 0.05;
+      b.x += Math.sin(b.wiggle)*0.6;
+      b.y += b.vy;
+      if(b.y > H+40) blobs.splice(i,1);
+    }
+    for(let i=sparks.length-1;i>=0;i--){
+      const s = sparks[i]; s.y += s.vy; if(s.y > H+30) sparks.splice(i,1);
+    }
+    for(let i=coffees.length-1;i>=0;i--){
+      const c = coffees[i]; c.y += c.vy; if(c.y > H+30) coffees.splice(i,1);
+    }
+
+    // collisions
+    if(state.invul>0) state.invul -= dt;
+    // player radius w/ heartbeat
+    player.r = 16 + Math.sin(performance.now()/180)*1.2;
+
+    // sparks
+    for(let i=sparks.length-1;i>=0;i--){
+      const s = sparks[i];
+      if(dist(player.x,player.y, s.x,s.y) < player.r + s.r){
+        sparks.splice(i,1);
+        const add = 10 + Math.min(40, state.combo*2);
+        state.score += add;
+        state.combo++; state.comboTime = 1200; // ms
+        elScore.textContent = state.score;
+      }
+    }
+    // combo decay
+    if(state.comboTime>0){ state.comboTime -= dt; if(state.comboTime<=0) state.combo=0; }
+
+    // coffee boost
+    for(let i=coffees.length-1;i>=0;i--){
+      const c = coffees[i];
+      if(dist(player.x,player.y, c.x,c.y) < player.r + c.r){
+        coffees.splice(i,1);
+        // temporary speed & small heal (if missing life)
+        player.speed = Math.min(9, player.speed+1.2);
+        if(state.lives<3){ state.lives++; }
+        updateLives();
+        // slow decay back
+        setTimeout(()=> player.speed=Math.max(6, player.speed-1.2), 3500);
+      }
+    }
+
+    // blobs hit
+    if(state.invul<=0){
+      for(let i=blobs.length-1;i>=0;i--){
+        const b = blobs[i];
+        if(dist(player.x,player.y, b.x,b.y) < player.r + b.r){
+          state.lives--; updateLives();
+          state.invul = 1200; state.combo=0;
+          // knockback
+          player.x = clamp(player.x + (player.x<b.x?-26:26), 18, state.w()-18);
+          blobs.splice(i,1);
+          if(state.lives<=0){ gameOver(); return; }
+          break;
+        }
+      }
+    }
+  }
+
+  function updateLives(){
+    elLives.textContent = '❤️'.repeat(state.lives) + '🤍'.repeat(3-state.lives);
+  }
+
+  function draw(){
+    const W = state.w(), H = state.h();
+    ctx.clearRect(0,0,W,H);
+
+    // backdrop subtle grid
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.strokeStyle = '#7ee7ff';
+    const step = 24;
+    for(let x=0;x<W;x+=step){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for(let y=0;y<H;y+=step){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+    ctx.restore();
+
+    // sparks
+    for(const s of sparks){
+      ctx.beginPath(); ctx.fillStyle = '#ffa260';
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
+      // glow
+      ctx.save(); ctx.globalAlpha=.15; ctx.fillStyle='#ffc38f';
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r*2.4, 0, Math.PI*2); ctx.fill(); ctx.restore();
+    }
+    // coffee
+    for(const c of coffees){
+      ctx.beginPath(); ctx.fillStyle = '#7ee7ff';
+      ctx.arc(c.x, c.y, c.r, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#0b0f19';
+      ctx.fillRect(c.x-5, c.y-1, 10, 2);
+    }
+    // blobs
+    for(const b of blobs){
+      ctx.beginPath(); ctx.fillStyle = b.color;
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.fill();
+    }
+
+    // player (Hauli)
+    const pulse = state.invul>0 ? 0.5 + 0.5*Math.sin(performance.now()/80) : 0;
+    ctx.save();
+    // aura
+    ctx.globalAlpha = 0.15 + pulse*0.1;
+    const g = ctx.createRadialGradient(player.x,player.y,6, player.x,player.y,32);
+    g.addColorStop(0, 'rgba(126,231,255,0.9)');
+    g.addColorStop(1, 'rgba(126,231,255,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(player.x,player.y,32,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    // body
+    ctx.beginPath();
+    ctx.fillStyle = state.invul>0 ? '#b8f1ff' : '#7ee7ff';
+    ctx.arc(player.x, player.y, player.r, 0, Math.PI*2); ctx.fill();
+
+    // face
+    ctx.fillStyle = '#0b0f19';
+    ctx.beginPath(); ctx.arc(player.x-5, player.y-3, 2.2, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(player.x+5, player.y-3, 2.2, 0, Math.PI*2); ctx.fill();
+    ctx.fillRect(player.x-6, player.y+4, 12, 2);
+
+    // UI overlays
+    if(!state.running){
+      // nothing, overlays handled by DOM
+    }
+  }
+
+  // expose for resize
+  window.addEventListener('resize', ()=>{ player.x = clamp(player.x, 18, state.w()-18); player.y = state.h()-70; });
+})();
+</script>
+</body>
+</html>
