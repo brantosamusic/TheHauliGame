@@ -52,7 +52,9 @@
   .box{position:relative;margin-top:12px}
   canvas{display:block;width:100%;height:66vh;border-radius:16px}
   @media (max-height:800px){ canvas{height:58vh} }
-  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+
+  /* FIX: overlay must accept clicks for buttons inside */
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:auto}
   .card{pointer-events:auto;padding:22px;text-align:center}
   .title{font-size:clamp(1.4rem,6vw,2rem);margin:.2em 0 .4em}
   .muted{color:var(--muted)}
@@ -192,7 +194,7 @@
               <div id="g2-hs" class="muted" style="margin-top:10px"></div>
             </div>
           </div>
-          <!-- On-canvas hint -->
+          <!-- On-canvas hint (keine Klicks nötig) -->
           <div class="overlay" id="g2-hint" style="pointer-events:none">
             <div class="card" style="background:rgba(0,0,0,.25);border:var(--line)">
               <span class="muted">Press <small class="kbd">Space</small> or hold <small class="kbd">Mouse/Touch</small> to rise</span>
@@ -459,7 +461,7 @@ function sfxGate(){ beep(660, .09, 'triangle', .035); }
       ctx.beginPath(); ctx.fillStyle='#ffa260'; ctx.arc(s.x,s.y,s.r,0,6.283); ctx.fill();
       if(settings.fx){ ctx.save(); ctx.globalAlpha=.15; ctx.fillStyle='#ffc38f'; ctx.beginPath(); ctx.arc(s.x,s.y,s.r*2.4,0,6.283); ctx.fill(); ctx.restore(); }
     }
-    for(const c of coffees){ ctx.beginPath(); ctx.fillStyle='#7ee7ff'; ctx.arc(c.x,c.y,c.r,0,6.283); ctx.fill(); ctx.fillStyle:'#070912'; ctx.fillRect(c.x-5,c.y-1,10,2); }
+    for(const c of coffees){ ctx.beginPath(); ctx.fillStyle='#7ee7ff'; ctx.arc(c.x,c.y,c.r,0,6.283); ctx.fill(); ctx.fillStyle='#070912'; ctx.fillRect(c.x-5,c.y-1,10,2); }
     for(const b of blobs){ ctx.beginPath(); ctx.fillStyle='rgba(255,107,125,.9)'; ctx.arc(b.x,b.y,b.r,0,6.283); ctx.fill(); }
 
     // player
@@ -508,7 +510,6 @@ function sfxGate(){ beep(660, .09, 'triangle', .035); }
     if(e.key.toLowerCase()==='p') togglePause();
   }, {passive:false});
   window.addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=false; });
-  // mouse/touch
   ['mousedown','touchstart'].forEach(ev=> canvas.addEventListener(ev, e=>{ e.preventDefault(); flap(); }, {passive:false}));
 
   el.info.onclick = ()=> el.how.style.display = el.how.style.display==='none'?'block':'none';
@@ -550,7 +551,6 @@ function sfxGate(){ beep(660, .09, 'triangle', .035); }
 
     // physics
     P.vy += gravity*diffMul; P.vy = clamp(P.vy, -6, 6); P.y  += P.vy;
-    // bounds
     if(P.y-P.r<0 || P.y+P.r>H()){ sfxHit(); over(); return; }
 
     // spawn gates
@@ -564,19 +564,18 @@ function sfxGate(){ beep(660, .09, 'triangle', .035); }
       S.speed = Math.min(4.8, S.speed + 0.035*diffMul);
       spawnT = 1400 / diffMul;
     }
-    // spawn orbs (bonus)
+    // spawn orbs
     orbT -= dt;
     if(orbT<=0){
       Orbs.push({ x: W()+40, y:R(30,H()-30), r:6 });
       orbT = R(1200, 2200) / diffMul;
     }
 
-    // move gates/orbs
+    // move & check
     for(let i=G.length-1;i>=0;i--){
       const g = G[i]; g.x -= S.speed;
       if(g.x < P.x && !g.passed){ g.passed=true; S.gates++; S.score+=2; el.gates.textContent=S.gates; el.score.textContent=S.score; sfxCollect(); }
       if(g.x < -60) G.splice(i,1);
-      // collision: within x-range & outside gap
       if(P.x+P.r>g.x-g.w/2 && P.x-P.r<g.x+g.w/2){
         if(P.y-P.r < g.c - g.gap/2 || P.y+P.r > g.c + g.gap/2){ sfxHit(); over(); return; }
       }
@@ -584,7 +583,6 @@ function sfxGate(){ beep(660, .09, 'triangle', .035); }
     for(let i=Orbs.length-1;i>=0;i--){
       const o=Orbs[i]; o.x -= S.speed*1.1;
       if(o.x < -20) Orbs.splice(i,1);
-      // collect
       const dx = (P.x - o.x), dy = (P.y - o.y);
       if((dx*dx+dy*dy) < (P.r+o.r)*(P.r+o.r)){ Orbs.splice(i,1); S.score+=5; el.score.textContent=S.score; sfxCollect(); }
     }
@@ -593,14 +591,12 @@ function sfxGate(){ beep(660, .09, 'triangle', .035); }
   function draw(){
     const Wc=W(), Hc=H(); ctx.clearRect(0,0,Wc,Hc);
 
-    // bg lines
     if(settings.fx){
       ctx.save(); ctx.globalAlpha=.06; ctx.strokeStyle='#bfe9ff'; const step=26;
       for(let y=0;y<Hc;y+=step){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(Wc,y); ctx.stroke(); }
       ctx.restore();
     }
 
-    // gates
     for(const g of G){
       ctx.fillStyle='rgba(255,255,255,.08)';
       const x = g.x - g.w/2;
@@ -613,14 +609,12 @@ function sfxGate(){ beep(660, .09, 'triangle', .035); }
       }
     }
 
-    // orbs
     for(const o of Orbs){
       ctx.beginPath(); ctx.fillStyle= settings.fx ? '#74ffa7' : '#9cffc0';
       ctx.arc(o.x,o.y,o.r,0,6.283); ctx.fill();
       if(settings.fx){ ctx.save(); ctx.globalAlpha=.18; ctx.fillStyle='#b6ffd0'; ctx.beginPath(); ctx.arc(o.x,o.y,o.r*2.2,0,6.283); ctx.fill(); ctx.restore(); }
     }
 
-    // player bubble
     if(settings.fx){
       const glow = ctx.createRadialGradient(P.x,P.y,5, P.x,P.y,26);
       glow.addColorStop(0,'rgba(255,162,96,.9)'); glow.addColorStop(1,'rgba(255,162,96,0)');
